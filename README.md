@@ -1,6 +1,6 @@
 # ASCII Cam
 
-Take a photo with the device camera and turn it into colorful ASCII art stamped with a random word.
+Take a photo with the device camera and turn it into colorful ASCII art.
 
 ![type](https://img.shields.io/badge/JS-0a9396)
 ![type](https://img.shields.io/badge/Webview-ee9b00)
@@ -23,9 +23,8 @@ https://cdr6934.github.io/ascii-cam
 
 1. The model invokes the skill via `run_js`, opening an interactive view in chat.
 2. The view shows a live camera preview with a **Capture** button.
-3. On capture, the frame is sampled to a character grid and rendered as ASCII art where **each
-   glyph is tinted by its source pixel color**, with a **random word** and **random accent color**
-   stamped on top. A **Retake** button restarts the camera.
+3. On capture, the **entire frame** is sampled to a character grid and rendered as ASCII art where
+   **each glyph is tinted by its source pixel color**. A **Retake** button restarts the camera.
 
 The camera is opened with `getUserMedia()` **inside the webview** — no image passes through the
 model, keeping it fast and private on-device.
@@ -36,27 +35,17 @@ model, keeping it fast and private on-device.
 - "Turn a photo into ascii art"
 - "ascii cam"
 
-To stamp a specific word instead of a random one: "ascii cam with the word NOVA".
-
 ## Layout
 
 ```
 .
 ├── SKILL.md            # frontmatter + instructions the model reads
 ├── scripts/
-│   └── index.html      # run_js entry point; returns the webview (forwards optional `word`)
+│   └── index.html      # run_js entry point; returns the webview
 ├── assets/
 │   └── webview.html    # camera capture + ASCII rendering (the interactive view)
 └── .nojekyll           # makes GitHub Pages serve SKILL.md raw
 ```
-
-## Parameters
-
-`run_js` `data` is a JSON string with one optional field:
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `word` | String | No | A specific word to stamp. Omit to let the skill pick a random word. |
 
 ## Notes
 

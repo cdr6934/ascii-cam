@@ -11,26 +11,23 @@
         margin: 0; height: 100%; background: #000; color: #eee; overflow: hidden;
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
       }
-      #stage { position: relative; width: 100vw; height: 100vh; display: grid; }
+      #stage { position: relative; width: 100vw; height: 100vh; }
       /* live camera preview */
       video {
         position: absolute; inset: 0; width: 100%; height: 100%;
         object-fit: cover; transform: scaleX(-1); background: #111;
       }
-      /* rendered ASCII art */
+      /* rendered ASCII art: flex container centers the <pre> in the viewport */
       #art {
-        position: absolute; inset: 0; margin: 0; background: #000;
-        display: none; align-content: center; justify-content: center;
-        font-family: "SFMono-Regular", Menlo, Consolas, monospace;
-        line-height: 1; white-space: pre; letter-spacing: 0;
-        overflow: hidden; user-select: none;
+        position: absolute; inset: 0; background: #000; overflow: hidden;
+        display: none; align-items: center; justify-content: center;
       }
-      #word {
-        position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%) rotate(-4deg);
-        display: none; padding: 10px 22px; border-radius: 50px; z-index: 5;
-        font-weight: 900; text-transform: uppercase; letter-spacing: 2px; white-space: nowrap;
-        color: #000; background: var(--accent); box-shadow: 0 8px 28px rgba(0,0,0,.55);
-        font-size: clamp(20px, 7vw, 52px);
+      #art.show { display: flex; }
+      /* the <pre> holds the actual character grid; white-space:pre keeps the rows intact */
+      #artpre {
+        margin: 0; white-space: pre; line-height: 1; letter-spacing: 0;
+        font-family: "SFMono-Regular", Menlo, Consolas, "Courier New", monospace;
+        user-select: none;
       }
       #status {
         position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 6;
@@ -53,8 +50,7 @@
   <body>
     <div id="stage">
       <video id="cam" autoplay playsinline muted></video>
-      <pre id="art"></pre>
-      <div id="word"></div>
+      <div id="art"><pre id="artpre"></pre></div>
       <div id="status">Starting camera…</div>
       <div id="controls">
         <button id="capture" disabled>Capture</button>
@@ -67,28 +63,16 @@
       // Lightest -> densest coverage. On a black background, brighter pixels map to denser,
       // more visible glyphs and dark pixels fade to spaces.
       const RAMP = " .:-=+*#%@";
-      const WORDS = [
-        "VIBES", "GLITCH", "RADICAL", "NEON", "PIXEL", "DREAM", "CHAOS", "STATIC",
-        "RETRO", "COSMIC", "FUZZY", "ECHO", "PRISM", "ZAP", "LO-FI", "WONDER",
-        "FRACTAL", "GHOST", "SODA", "TURBO", "MIRAGE", "VAPOR", "BLOOM", "NOVA",
-      ];
-      const PALETTES = [
-        "#00f2fe", "#ff2e97", "#ffe600", "#7CFF6B", "#ff7a00", "#b06bff", "#ff5252",
-      ];
-
-      const params = new URLSearchParams(location.search);
-      const forcedWord = (params.get("word") || "").trim();
 
       const video = document.getElementById("cam");
-      const artEl = document.getElementById("art");
-      const wordEl = document.getElementById("word");
+      const art = document.getElementById("art");
+      const artPre = document.getElementById("artpre");
       const statusEl = document.getElementById("status");
       const captureBtn = document.getElementById("capture");
       const retakeBtn = document.getElementById("retake");
       const canvas = document.getElementById("sample");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
       const esc = (c) => (c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === "&" ? "&amp;" : c);
 
       let camWatchdog = null;
@@ -151,17 +135,16 @@
         }
       }
 
-      // Sample the current frame down to a character grid and emit colored ASCII.
+      // Sample the whole frame to a character grid and emit colored ASCII for the ENTIRE image.
       function renderAscii() {
-        const vw = video.videoWidth || 640;
-        const vh = video.videoHeight || 480;
-        if (!vw || !vh) return;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        if (!vw || !vh) return false;
 
-        // Fit the art to the viewport. Monospace cells are ~2x taller than wide, so the
-        // vertical sample count is halved to keep proportions correct.
-        const cols = Math.max(48, Math.min(110, Math.floor(window.innerWidth / 6)));
-        const cellAspect = 0.5;
-        const rows = Math.max(24, Math.round((cols * (vh / vw)) * cellAspect));
+        // Column count from screen width; row count from the image aspect ratio. Monospace
+        // cells are taller than wide (~0.55), so scale rows down to keep proportions.
+        const cols = Math.max(60, Math.min(120, Math.floor(window.innerWidth / 5)));
+        const rows = Math.max(1, Math.round((vh / vw) * cols * 0.55));
 
         canvas.width = cols;
         canvas.height = rows;
@@ -188,33 +171,30 @@
           }
           html += "\n";
         }
-        artEl.innerHTML = html;
+        artPre.innerHTML = html;
 
-        // Size the monospace font so the whole grid fits the screen.
-        const fontPx = Math.max(4, Math.floor(window.innerWidth / (cols * 0.62)));
-        artEl.style.fontSize = fontPx + "px";
-
-        // Random accent color + word stamp.
-        const accent = pick(PALETTES);
-        document.documentElement.style.setProperty("--accent", accent);
-        wordEl.textContent = forcedWord || pick(WORDS);
+        // Fit the WHOLE grid on screen: size the font by whichever dimension is the tighter
+        // constraint (monospace char width ≈ 0.6em, line height = 1em).
+        const fontByWidth = window.innerWidth / (cols * 0.6);
+        const fontByHeight = window.innerHeight / (rows * 1.0);
+        const fontPx = Math.max(3, Math.floor(Math.min(fontByWidth, fontByHeight)));
+        artPre.style.fontSize = fontPx + "px";
+        return true;
       }
 
       function capture() {
-        renderAscii();
+        if (!renderAscii()) { statusEl.textContent = "Frame not ready yet — try again."; return; }
         const stream = video.srcObject;
         if (stream) stream.getTracks().forEach((t) => t.stop());
         video.style.display = "none";
-        artEl.style.display = "grid";
-        wordEl.style.display = "block";
+        art.classList.add("show");
         statusEl.style.display = "none";
         captureBtn.style.display = "none";
         retakeBtn.style.display = "inline-block";
       }
 
       function retake() {
-        artEl.style.display = "none";
-        wordEl.style.display = "none";
+        art.classList.remove("show");
         statusEl.style.display = "block";
         statusEl.textContent = "Starting camera…";
         captureBtn.style.display = "inline-block";
