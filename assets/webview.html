@@ -91,29 +91,63 @@
       const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
       const esc = (c) => (c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === "&" ? "&amp;" : c);
 
-      async function startCamera() {
+      let camWatchdog = null;
+
+      // Enable Capture once the camera has produced a real frame — however that fires.
+      function markReady() {
+        if (camWatchdog) { clearTimeout(camWatchdog); camWatchdog = null; }
+        if (!captureBtn.disabled) return;
+        statusEl.textContent = "Tap Capture to make ASCII art";
+        captureBtn.disabled = false;
+      }
+
+      // Attach BEFORE play() so we never miss an event that already fired, and also
+      // handle the case where the frame is ready synchronously.
+      function watchForFrame() {
+        const onReady = () => { if (video.videoWidth > 0) { cleanup(); markReady(); } };
+        function cleanup() {
+          ["loadeddata", "canplay", "playing", "timeupdate"].forEach((ev) =>
+            video.removeEventListener(ev, onReady));
+        }
+        if (video.readyState >= 2 && video.videoWidth > 0) { markReady(); return; }
+        ["loadeddata", "canplay", "playing", "timeupdate"].forEach((ev) =>
+          video.addEventListener(ev, onReady));
+      }
+
+      async function getStream() {
+        // `ideal` (not exact) so front-only devices don't throw; retry bare if the webview
+        // rejects the constraints object entirely.
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+          return await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
             audio: false,
           });
-          video.srcObject = stream;
-          await video.play().catch(() => {});
-          video.onloadeddata = () => {
-            statusEl.textContent = "Tap Capture to make ASCII art";
-            captureBtn.disabled = false;
-          };
-        } catch (err) {
-          // Fall back to any camera if the rear camera isn't available.
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            video.srcObject = stream;
-            await video.play().catch(() => {});
-            captureBtn.disabled = false;
-            statusEl.textContent = "Tap Capture to make ASCII art";
-          } catch (e2) {
-            statusEl.textContent = "Camera unavailable: " + e2.message;
+        } catch (e) {
+          return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+      }
+
+      async function startCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          statusEl.textContent = "This webview has no camera API (getUserMedia unavailable).";
+          return;
+        }
+        statusEl.textContent = "Starting camera…";
+        camWatchdog = setTimeout(() => {
+          if (captureBtn.disabled) {
+            statusEl.textContent =
+              "Camera didn't start. Allow camera permission for the app, then reopen the skill.";
           }
+        }, 8000);
+        try {
+          const stream = await getStream();
+          video.srcObject = stream;
+          watchForFrame();                 // attach before play to avoid the race
+          await video.play().catch(() => {});
+          watchForFrame();                 // re-check in case it was ready synchronously
+        } catch (err) {
+          if (camWatchdog) { clearTimeout(camWatchdog); camWatchdog = null; }
+          statusEl.textContent = "Camera error: " + (err && err.name ? err.name + " — " + err.message : err);
         }
       }
 
