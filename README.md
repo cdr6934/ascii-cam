@@ -24,7 +24,9 @@ https://cdr6934.github.io/ascii-cam
 1. The model invokes the skill via `run_js`, opening an interactive view in chat.
 2. The view shows a live camera preview with a **Capture** button.
 3. On capture, the **entire frame** is sampled to a character grid and rendered as ASCII art where
-   **each glyph is tinted by its source pixel color**. A **Retake** button restarts the camera.
+   **each glyph is tinted by its source pixel color**, keeping the photo's true proportions.
+4. **Save** exports the art as a PNG (via the native share sheet, falling back to download), and
+   **Retake** restarts the camera.
 
 The camera is opened with `getUserMedia()` **inside the webview** — no image passes through the
 model, keeping it fast and private on-device.
@@ -51,6 +53,11 @@ model, keeping it fast and private on-device.
 
 - The luminance→glyph ramp runs light→dense (`" .:-=+*#%@"`) so bright pixels render as visible
   glyphs and dark pixels fade into the black background.
+- Proportions are correct because the monospace cell aspect (char width ÷ line height) is
+  **measured at runtime**, not assumed, so the grid matches the photo's aspect ratio on any device.
+- Save renders the grid to an offscreen canvas and exports a PNG. On mobile webviews it uses the
+  Web Share API (`navigator.share` with a file) so the image can be saved to Photos; otherwise it
+  falls back to a file download.
 - The live preview is mirrored (selfie-style); the captured frame is mirrored to match.
 - Hosting must serve raw MIME types (GitHub Pages with `.nojekyll`), **not**
   `raw.githubusercontent.com`, which serves `text/plain` and won't execute the webview.
